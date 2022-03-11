@@ -1,7 +1,6 @@
-#include "SDegree.h"
+#include "SDegreeNodeParallel.h"
 
-
-SDegree::SDegree(string graph_path) {
+SDegreeNodeParallel::SDegreeNodeParallel(string graph_path) {
 
     int  u, v;
     char line[512];
@@ -32,7 +31,7 @@ SDegree::SDegree(string graph_path) {
     data.clear();
 }
 
-void SDegree::SDegreeList(int** sub_candidate,const int* vertex_list, const int* edge_list, const int* candidate, int node_cnt, int level, long long& res) {
+void SDegreeNodeParallel::SDegreeList(const int* vertex_list, const int* edge_list, const int* candidate, int node_cnt, int level, long long& res, int** sub_candidate) {
     for (int i = 0; i < node_cnt; i++) {
         int u = candidate[i];
         int start_idx = vertex_list[u], nbr_cnt = vertex_list[u + 1] - vertex_list[u];
@@ -46,24 +45,34 @@ void SDegree::SDegreeList(int** sub_candidate,const int* vertex_list, const int*
             //if(edge_list[start_idx+nbr_cnt-(level - 1)]<candidate[0] ) continue;
             int itscCnt = intersect_simd4x(edge_list + start_idx, nbr_cnt, candidate, node_cnt, sub_candidate[level-2]);
             if (itscCnt > level - 2) {
-                SDegreeList(sub_candidate, vertex_list, edge_list, sub_candidate[level-2], itscCnt, level - 1, res);
+                SDegreeList(vertex_list, edge_list, sub_candidate[level-2], itscCnt, level - 1, res, sub_candidate);
             }
         }
     }
 }
 
-long long SDegree::kclique_main(int k, int* vertex_list,int* edge_list,int** sub_candidate){
-    
+long long SDegreeNodeParallel::kclique_main(int k,int* vertex_list,int* edge_list){
     long long res=0;
-    for (int u = 0; u < n; u++) {
-      int start_idx = vertex_list[u], end_idx = vertex_list[u + 1];
-      if(end_idx-start_idx<k-1) continue;
-      SDegreeList(sub_candidate,vertex_list, edge_list, edge_list + start_idx, end_idx - start_idx, k - 1, res);
+    long long res_t=0;
+    int** sub_candidate;
+    #pragma omp parallel private(res_t,sub_candidate) reduction(+:res)
+    {
+        sub_candidate=(int**) malloc(k*sizeof(int*));
+        for(int i=0;i<k;i++){
+            sub_candidate[i]=(int*)calloc((max_deg+1),sizeof(int));
+        }
+        #pragma omp for schedule(dynamic, 1) nowait
+        for (int u = 0; u < n; u++) {
+          int start_idx = vertex_list[u], end_idx = vertex_list[u + 1];
+		    if(end_idx - start_idx < k-1) continue;
+          res_t=0;
+          SDegreeList(vertex_list, edge_list, edge_list + start_idx, end_idx - start_idx, k - 1, res_t, sub_candidate);
+          res+=res_t;
+        }
     }
-
     return res;
 }
-long long SDegree::kclique(int k) {
+long long SDegreeNodeParallel::kclique(int k,int threads) {
     struct timeval time_start;
     struct timeval time_end;
     max_deg = 0;
@@ -71,21 +80,14 @@ long long SDegree::kclique(int k) {
         max_deg = max(max_deg, csr_deg[i]);
         csr_deg[i] += csr_deg[i - 1];
     }
-    int** sub_candidate=(int**) malloc(k*sizeof(int*));
-    for(int i=0;i<k;i++){
-        sub_candidate[i]=(int*)malloc((max_deg+1)*sizeof(int));
-    }
     printf("max degree:%d\n",max_deg);
+    omp_set_num_threads(threads);
     gettimeofday(&time_start, NULL);
-    long long res = kclique_main(k,csr_deg.data(),csr_edge.data(),sub_candidate);
+    long long res = kclique_main(k,csr_deg.data(),csr_edge.data());
     gettimeofday(&time_end, NULL);
     double list_time = (time_end.tv_sec - time_start.tv_sec) * 1000.0 + (time_end.tv_usec - time_start.tv_usec) / 1000.0;
     printf("Number of %d-cliques: %lld\n", k, res);
-	  printf("- List Time = %fs\n", list_time / 1000);
-    for(int i=0;i<k;i++){
-        free(sub_candidate[i]);
-    }
-    free(sub_candidate);
+	printf("- List Time (%d threads)= %fs\n", threads, list_time / 1000);
     return res;
 }
 

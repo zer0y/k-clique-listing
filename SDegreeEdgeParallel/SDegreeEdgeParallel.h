@@ -14,11 +14,13 @@ public:
     int n, m;
     vector<int> csr_deg;
     vector<int> csr_edge;
+    vector<vector<int> > data;
     int max_deg;
 public:
     SDegreeParallel(string graph_path);
     long long kclique(int k,int threads);
-    long long kclique_main(int k, int* candidate,int node_cnt, int* vertex_list,int* edge_list);
+    //long long kclique_main(int k, int* candidate, int node_cnt,int* vertex_list,int* edge_list);
+    long long kclique_main(int k, int* vertex_list,int* edge_list);
     void SDegreeList(const int* vertex_list, const int* edge_list, const int* candidate, int node_cnt, int level, long long& res, int** sub_candidate);
 };
 #endif //SDEGREEPARALLEL_H

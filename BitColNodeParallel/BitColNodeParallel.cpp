@@ -156,6 +156,7 @@ void free_subgraph(subgraph* sg, unsigned int k) {
 	free(sg->nodes);
 	//free(sg->lab);
 	free(sg->adj);
+  free(sg->color);
 	free(sg);
 }
 
@@ -316,6 +317,7 @@ void freeheap(bheap *heap) {
 	free(heap);
 }
 
+
 //computing degeneracy ordering and core value
 void ord_core(edgelist* el, unsigned k) {
 	unsigned i, j, r = 0, n = el->n, e = el->e, flag = 0;
@@ -405,8 +407,9 @@ subgraph* allocsub(graph* g, unsigned k) {
 	sg->adj = (unsigned*)malloc(g->core * (g->core / block_size + 1) * sizeof(unsigned));
 	for (i = 1; i < k; i++) {
 		sg->d[i] = (unsigned*)malloc(g->core * sizeof(unsigned));
-		sg->nodes[i] = (unsigned*)malloc(g->core * sizeof(unsigned));
+		sg->nodes[i] = (unsigned*)malloc((g->core / block_size + 1) * sizeof(unsigned));
 	}
+  sg->color = (unsigned*)malloc(g->core * sizeof(unsigned));
 	sg->core = g->core;
 	return sg;
 }
@@ -414,8 +417,8 @@ subgraph* allocsub(graph* g, unsigned k) {
 void mksub(graph* g, unsigned u, subgraph* sg, unsigned k) {
 	unsigned i, j, l, v, w, s, t, id_num, id_bit;
 
-	static unsigned* old0 = NULL, * new0 = NULL;//to improve
-#pragma omp threadprivate(new0,old0)
+static unsigned* old0 = NULL, * new0 = NULL;//to improve
+  #pragma omp threadprivate(new0,old0)
 
 	if (old0 == NULL) {
 		new0 = (unsigned*)malloc(g->n * sizeof(unsigned));
@@ -424,6 +427,12 @@ void mksub(graph* g, unsigned u, subgraph* sg, unsigned k) {
 			new0[i] = -1;
 		}
 	}
+
+  /*unsigned* new0 = (unsigned*)malloc(g->n * sizeof(unsigned));
+  unsigned* old0 = (unsigned*)malloc(g->core * sizeof(unsigned));
+  for (i = 0; i < g->n; i++) {
+    new0[i] = -1;
+  }*/
 
 	j = g->cd[u + 1] - g->cd[u];
 	sg->n[k - 1] = j;
@@ -474,8 +483,7 @@ void mksub(graph* g, unsigned u, subgraph* sg, unsigned k) {
 	unsigned* C = (unsigned*)calloc(sg->n[k - 1], sizeof(unsigned));
 	int* color = (int*)malloc(sg->n[k - 1] * sizeof(int));
 	unsigned* Index = (unsigned*)malloc(sg->n[k - 1] * sizeof(unsigned));
-	iddegree* ig;
-	ig = (iddegree*)malloc(sg->n[k - 1] * sizeof(iddegree));
+	iddegree* ig = (iddegree*)malloc(sg->n[k - 1] * sizeof(iddegree));
 	for (i = 0; i < sg->n[k - 1]; i++)
 	{
 		color[i] = -1;
@@ -526,7 +534,6 @@ void mksub(graph* g, unsigned u, subgraph* sg, unsigned k) {
 		}
 	}
 
-	sg->color = (unsigned*)malloc(sg->n[k - 1] * sizeof(unsigned));
 	memset(sg->adj, 0, sizeof(unsigned) * sg->n[k - 1] * sg->block_num);
 	for (unsigned i = 0; i < sg->n[k - 1]; i++)
 	{
@@ -558,6 +565,13 @@ void mksub(graph* g, unsigned u, subgraph* sg, unsigned k) {
 	for (i = g->cd[u]; i < g->cd[u + 1]; i++) {
 		new0[g->adj[i]] = -1;
 	}
+  free(d0);
+  free(C);
+  free(color);
+  free(Index);
+  free(ig);
+  //free(old0);
+  //free(new0);
 }
 void kclique_thread(unsigned l, subgraph* sg, unsigned long long* n) {
 	unsigned i, j, u, v, cnt;
@@ -602,11 +616,13 @@ unsigned long long kclique_main(unsigned k, graph* g) {
 #pragma omp for schedule(dynamic, 1) nowait
 		for (u = 0; u < g->n; u++) {
 			if (g->cd[u + 1] - g->cd[u] >= k - 1) {
+        
 				mksub(g, u, sg, k);
 				kclique_thread(k - 1, sg, &n);
+        //free_subgraph(sg,k);
 			}
-
 		}
+    free_subgraph(sg,k);
 
 	}
 	return n;
