@@ -82,13 +82,9 @@ long long SDegreeParallel::kclique_main(int k, int* vertex_list,int* edge_list){
 long long SDegreeParallel::kclique(int k,int threads) {
     struct timeval time_start;
     struct timeval time_end;
-    vector<int> candidate;
     max_deg = 0;
     for (int i = 1; i <= n; i++) {
         max_deg = max(max_deg, csr_deg[i]);
-        //if (csr_deg[i] >= k - 1) {
-        //candidate.push_back(i - 1);
-        //}
         csr_deg[i] += csr_deg[i - 1];
     }
     printf("max degree:%d\n",max_deg);
